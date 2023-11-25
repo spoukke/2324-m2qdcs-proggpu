@@ -1,7 +1,7 @@
 #include <cstdio>
 #include "cuda.h"
 
-__global__ void cudaHello(){
+__global__ void cudaHello(int numBlocks, int blockSize){
   // Afficher le message Hello World ainsi que blockidx et threadidx depuis chaque thread
   // A FAIRE ...
   printf("Hello World from block %d, thread %d\n", blockIdx.x, threadIdx.x);
