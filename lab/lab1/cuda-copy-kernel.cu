@@ -11,6 +11,7 @@ __global__ void cudaCopyByBlocks(float *tab0, const float *tab1, int size)
   // Calculer le bon idx
   // TODO / A FAIRE ...
   // idx = ?
+  idx = blockIdx.x;
   if (idx < size) { tab0[idx] = tab1[idx]; }
 }
 
@@ -21,6 +22,7 @@ __global__ void cudaCopyByBlocksThreads(float *tab0, const float *tab1, int size
   // Calculer le bon idx en fonction du blockIdx.x, threadIdx.x, et blockDim.x
   // TODO / A FAIRE ...
   // idx = ?
+  idx = blockIdx.x * blockDim.x + threadIdx.x;
   if (idx < size) { tab0[idx] = tab1[idx]; }
 }
 
@@ -46,15 +48,20 @@ int main(int argc, char **argv) {
   // Allocate dynamic arrays dA and dB of size N on the GPU with cudaMalloc
   // Allouer les tableau dA et dB dynamiques de size N sur le GPU avec cudaMalloc 
   // TODO / A FAIRE ...
+  cudaMalloc((void **)&dA, sizeof(float) * N);
+  cudaMalloc((void **)&dB, sizeof(float) * N);
 
   // Copy A into dA and B into dB
   // Copier A dans dA et B dans dB
   // TODO / A FAIRE ...
+  cudaMemcpy(dA, A, sizeof(float) * N, cudaMemcpyHostToDevice);
+  cudaMemcpy(dB, B, sizeof(float) * N, cudaMemcpyHostToDevice);
 
   // Copy dA into dB using the kernel cudaCopyByBlocks
   // Copier dA dans dB avec le kernel cudaCopyByBlocks
   // TODO / A FAIRE ...
   // cudaCopyByBlocks<<<...,...>>>(...) ???
+  cudaCopyByBlocks<<<1024, 1>>>(dB, dA, N);
 
   // Wait for kernel cudaCopyByBlocks to finish
   // Attendre que le kernel cudaCopyByBlocks termine
@@ -66,6 +73,7 @@ int main(int argc, char **argv) {
   // Copy dB into B for verification
   // Copier dB dans B pour la verification
   // TODO / A FAIRE ...
+  cudaMemcpy(B, dB, sizeof(float) * N, cudaMemcpyDeviceToHost);
 
   // Verify the results on the CPU by comparing B with A
   // Verifier le resultat en CPU en comparant B avec A
@@ -77,11 +85,15 @@ int main(int argc, char **argv) {
   // Remettre B a zero puis recopier dans dB tester le deuxieme kernel de copie
   for (int i = 0; i < N; i++) { B[i] = 0.0f; }
   // TODO / A FAIRE ...
+  cudaMemcpy(dB, B, sizeof(float) * N, cudaMemcpyHostToDevice);
 
   // Copy dA into dB with the kernel cudaCopyByBlocksThreads
   // Copier dA dans dB avec le kernel cudaCopyByBlocksThreads
   // TODO / A FAIRE ...
   // cudaCopyByBlocksThreads<<<...,...>>>(...) ???
+  int threadsPerBlock = 1024;  // Maximum number of threads per block
+  int blocks = (N + threadsPerBlock - 1) / threadsPerBlock;
+  cudaCopyByBlocksThreads<<<blocks, threadsPerBlock>>>(dB, dA, N);
 
   // Wait for the kernel cudaCopyByBlocksThreads to finish
   // Attendre que le kernel cudaCopyByBlocksThreads termine
@@ -93,6 +105,7 @@ int main(int argc, char **argv) {
   // Copy dB into B for verification
   // Copier dB dans B pour la verification
   // TODO / A FAIRE ...
+  cudaMemcpy(B, dB, sizeof(float) * N, cudaMemcpyDeviceToHost);
 
   // Verify the results on the CPU by comparing B with A
   // Verifier le resultat en CPU en comparant B avec A
@@ -103,6 +116,8 @@ int main(int argc, char **argv) {
   // Deallocate arrays dA[N] and dB[N] on the GPU
   // Desaollouer le tableau dA[N] et dB[N] sur le GPU
   // TODO / A FAIRE ...
+  cudaFree(dA);
+  cudaFree(dB);
 
   // Deallocate A and B
   // Desallouer A et B
