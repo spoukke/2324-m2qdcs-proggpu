@@ -20,6 +20,14 @@ float *dA, *dB, *dC;
 __global__ void multiplyMatrixGPUByBlocks(float *dA, float *dB, float *dC, int n)
 {
   // TODO / A FAIRE ...
+  int i = blockIdx.y;
+  int j = blockIdx.x;
+
+  float sum = 0.0f;
+  for (int k = 0; k < n; ++k) {
+    sum += dA[i * n + k] * dB[k + j * n];
+  }
+  dC[i * n + j] = sum;
 }
 
 
@@ -30,6 +38,16 @@ __global__ void multiplyMatrixGPUByBlocks(float *dA, float *dB, float *dC, int n
 __global__ void multiplyMatrixGPUByBlocksThreads1D(float *dA, float *dB, float *dC, int n)
 {
   // TODO / A FAIRE ...
+  int row = blockIdx.y;
+  int col = threadIdx.x + blockIdx.x * blockDim.x;
+
+  if (col < n) {
+    float sum = 0.0f;
+    for (int k = 0; k < n; ++k) {
+      sum += dA[row * n + k] * dB[k + col * n];
+    }
+    dC[row * n + col] = sum;
+  }
 }
 
 
@@ -41,6 +59,16 @@ __global__ void multiplyMatrixGPUByBlocksThreads1D(float *dA, float *dB, float *
 __global__ void multiplyMatrixGPUByBlocksThreads1DNonMultiple(float *dA, float *dB, float *dC, int n)
 {
   // TODO / A FAIRE ...
+  int row = blockIdx.y;
+  int col = threadIdx.x + blockIdx.x * blockDim.x;
+
+  if (col < n) {
+    float sum = 0.0f;
+    for (int k = 0; k < n; ++k) {
+      sum += dA[row * n + k] * dB[k + col * n];
+    }
+    dC[row * n + col] = sum;
+  }
 }
 
 
@@ -53,6 +81,16 @@ __global__ void multiplyMatrixGPUByBlocksThreads1DNonMultiple(float *dA, float *
 __global__ void multiplyMatrixGPUByBlocksThreads2D(float *dA, float *dB, float *dC, int n)
 {
   // TODO / A FAIRE ...
+  int row = blockIdx.y * blockDim.y + threadIdx.y;
+  int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+  if (row < n && col < n) {
+    float sum = 0.0f;
+    for (int k = 0; k < n; ++k) {
+      sum += dA[row * n + k] * dB[k + col * n];
+    }
+    dC[row * n + col] = sum;
+  }
 }
 
 
@@ -64,6 +102,16 @@ __global__ void multiplyMatrixGPUByBlocksThreads2D(float *dA, float *dB, float *
 __global__ void multiplyMatrixGPUByBlocksThreads2DNonMultiple(float *dA, float *dB, float *dC, int n)
 {
   // TODO / A FAIRE ...
+  int row = blockIdx.y * blockDim.y + threadIdx.y;
+  int col = blockIdx.x * blockDim.x + threadIdx.x;
+
+  if (row < n && col < n) {
+    float sum = 0.0f;
+    for (int k = 0; k < n; ++k) {
+      sum += dA[row * n + k] * dB[k + col * n];
+    }
+    dC[row * n + col] = sum;
+  }
 }
 
 
@@ -115,6 +163,9 @@ int main(int argc, char **argv)
   // Allocate dA and dB, then copy the arrays A and B to the GPU
   // Allouer dA et dB, puis copier les tableaux A et B vers le GPU
   // TODO / A FAIRE ...
+  cudaMalloc((void **)&dA, N * N * sizeof(float));
+  cudaMalloc((void **)&dB, N * N * sizeof(float));
+  cudaMalloc((void **)&dC, N * N * sizeof(float));
 
 
   // Call each GPU kernel appropriately to multiply matrices A and B
@@ -122,40 +173,68 @@ int main(int argc, char **argv)
   // Appeler chaque kernel GPU de maniere appropriee pour multiplier les matrices A et B
   // Mesurer et afficher le temps d'execution et la performance (en GFlops/s) de chaque kernel, sans compter le temps de transfert.
   // TODO / A FAIRE ...
+  cudaMemcpy(dA, A, N * N * sizeof(float), cudaMemcpyHostToDevice);
+  cudaMemcpy(dB, B, N * N * sizeof(float), cudaMemcpyHostToDevice);
+
   {
-    dim3 dimGrid;
-    dim3 dimBlock;
-    // multiplyMatrixGPUByBlocks<<<..., ...>>>(N);
+    dim3 dimGrid1(N, N, 1);
+    dim3 dimBlock1(1, 1, 1);
+    multiplyMatrixGPUByBlocks<<<dimGrid1, dimBlock1>>>(dA, dB, dC, N);
+    cudaMemcpy(C, dC, N * N * sizeof(float), cudaMemcpyDeviceToHost);
+    std::cout << "First kernel:" << std::endl;
+    verifyResults();
+    std::cout << "\n" << std::endl;
+    cudaMemset(dC, 0, N * N * sizeof(float)); // Reset dC for the next kernel
   }
   {
-    dim3 dimGrid;
-    dim3 dimBlock;
-    // multiplyMatrixGPUByBlocksThreads1D<<<..., ...>>>(N);
+    dim3 dimGrid2(N / 4, N, 1); // Assuming N is divisible by 4
+    dim3 dimBlock2(4, 1, 1);
+    multiplyMatrixGPUByBlocksThreads1D<<<dimGrid2, dimBlock2>>>(dA, dB, dC, N);
+    cudaMemcpy(C, dC, N * N * sizeof(float), cudaMemcpyDeviceToHost);
+    std::cout << "Second kernel:" << std::endl;
+    verifyResults();
+    std::cout << "\n" << std::endl;
+    cudaMemset(dC, 0, N * N * sizeof(float)); // Reset dC for the next kernel
   }
   { 
-    dim3 dimGrid;
-    dim3 dimBlock;
-    // multiplyMatrixGPUByBlocksThreads1DNonMultiple<<<..., ...>>>(N);
+    dim3 dimGrid3((N + 3) / 4, N, 1); // Adjust for N not divisible by 4
+    dim3 dimBlock3(4, 1, 1); // Assuming 4 threads per block
+    multiplyMatrixGPUByBlocksThreads1DNonMultiple<<<dimGrid3, dimBlock3>>>(dA, dB, dC, N);
+    cudaMemcpy(C, dC, N * N * sizeof(float), cudaMemcpyDeviceToHost);
+    std::cout << "Third kernel:" << std::endl;
+    verifyResults();
+    std::cout << "\n" << std::endl;
+    cudaMemset(dC, 0, N * N * sizeof(float)); // Reset dC for the next kernel
   }
   {
-    dim3 dimGrid;
-    dim3 dimBlock;
-    // multiplyMatrixGPUByBlocksThreads2D<<<..., ...>>>(N);
+    dim3 dimGrid4(N / 4, N / 4, 1); // Assuming N is divisible by 4
+    dim3 dimBlock4(4, 4, 1); // 4x4 threads per block
+    multiplyMatrixGPUByBlocksThreads2D<<<dimGrid4, dimBlock4>>>(dA, dB, dC, N);
+    cudaMemcpy(C, dC, N * N * sizeof(float), cudaMemcpyDeviceToHost);
+    std::cout << "Fourth kernel:" << std::endl;
+    verifyResults();
+    std::cout << "\n" << std::endl;
+    cudaMemset(dC, 0, N * N * sizeof(float)); // Reset dC for the next kernel
   }
   {
-    dim3 dimGrid;
-    dim3 dimBlock;
-    // multiplyMatrixGPUByBlocksThreads2DNonMultiple<<<..., ...>>>(N);
+    dim3 dimGrid5((N + 3) / 4, (N + 3) / 4, 1);
+    dim3 dimBlock5(4, 4, 1); // 4x4 threads per block
+    multiplyMatrixGPUByBlocksThreads2DNonMultiple<<<dimGrid5, dimBlock5>>>(dA, dB, dC, N);
+    cudaMemcpy(C, dC, N * N * sizeof(float), cudaMemcpyDeviceToHost);
+    std::cout << "Fifth kernel:" << std::endl;
+    verifyResults();
+    // cudaMemset(dC, 0, N * N * sizeof(float)); // Reset dC for the final time
   }
 
   // Copy the array dC back to the CPU
   // Recopier le tableau dC vers le CPU
   // TODO / A FAIRE ...
+  cudaMemcpy(C, dC, N * N * sizeof(float), cudaMemcpyDeviceToHost);
 
   // Verify the results
   // Verifier les resultats
   // multiplyMatrixCPU();
-  verifyResults();
+  // verifyResults();
 
   // Deallocate A, B, C
   // Desallouer A, B, C
@@ -164,6 +243,7 @@ int main(int argc, char **argv)
   // Deallocate dA, dB, dC
   // Desallouer dA, dB, dC
   // TODO / A FAIRE ...
+  cudaFree(dA); cudaFree(dB); cudaFree(dC);
 
   return 0;
 }
