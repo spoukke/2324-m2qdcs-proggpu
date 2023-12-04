@@ -119,9 +119,41 @@ __global__ void multiplyMatrixGPUByBlocksThreads2DNonMultiple(float *dA, float *
 __global__ void multiplyMatrixGPUByBlocksThreads2DNonMultipleSharedMemory(float *dA, float *dB, float *dC, int n)
 {
   // TODO / A FAIRE ...
+  int bx = blockIdx.x, by = blockIdx.y;
+  int tx = threadIdx.x, ty = threadIdx.y;
+  int row = by * BSXY + ty;
+  int col = bx * BSXY + tx;
+
   __shared__ float shA[BSXY][BSXY];
   __shared__ float shB[BSXY][BSXY];
-  float c = 0.0;
+
+  float sum = 0.0f;
+
+  for (int ph = 0; ph < ceilf(n / (float)BSXY); ++ph) {
+    if (row < n && ph * BSXY + tx < n) {
+      shA[ty][tx] = dA[row * n + ph * BSXY + tx];
+    } else {
+      shA[ty][tx] = 0.0f;
+    }
+
+    if (col < n && ph * BSXY + ty < n) {
+      shB[ty][tx] = dB[(ph * BSXY + ty) * n + col];
+    } else {
+      shB[ty][tx] = 0.0f;
+    }
+
+    __syncthreads();
+
+    for (int k = 0; k < BSXY; ++k) {
+      sum += shA[ty][k] * shB[k][tx];
+    }
+
+    __syncthreads();
+  }
+
+  if (row < n && col < n) {
+    dC[row * n + col] = sum;
+  }
 }
 
 
@@ -239,16 +271,29 @@ int main(int argc, char **argv)
     dimGrid.z = 1;
     // multiplyMatrixGPUByBlocksThreads2DNonMultiple<<<dimGrid, dimBlock>>>(N);
   }
+  {
+    // Calling the multiplyMatrixGPUByBlocksThreads2DNonMultipleSharedMemory kernel
+    dim3 dimBlock(BSXY, BSXY);
+    dim3 dimGrid((N + BSXY - 1) / BSXY, (N + BSXY - 1) / BSXY);
+    multiplyMatrixGPUByBlocksThreads2DNonMultipleSharedMemory<<<dimGrid, dimBlock>>>(dA, dB, dC, N);
+    
+    // Copying the result back to CPU and verifying it
+    cudaMemcpy(C, dC, N * N * sizeof(float), cudaMemcpyDeviceToHost);
+    verifyResults();
+
+    // Reset dC for the next kernel
+    cudaMemset(dC, 0, N * N * sizeof(float));
+  }
 
   // Copy the array dC back to the CPU
   // Recopier le tableau dC vers le CPU
   // TODO / A FAIRE ...
-  cudaMemcpy(C, dC, N * N * sizeof(float), cudaMemcpyDeviceToHost);
+  // cudaMemcpy(C, dC, N * N * sizeof(float), cudaMemcpyDeviceToHost);
 
   // Verify the results
   // Verifier les resultats
   // multiplyMatrixCPU();
-  verifyResults();
+  // verifyResults();
 
   // Deallocate A, B, C
   // Desallouer A, B, C
