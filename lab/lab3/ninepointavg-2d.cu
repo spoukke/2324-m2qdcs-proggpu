@@ -43,7 +43,7 @@ void ninePointAverageCPU(const float *A, float *Aavg)
     for (int j = 1; j < N - 1; j++) {
       Aavg[i + j * N] = (A[i - 1 + (j - 1) * N] + A[i - 1 + (j) * N] + A[i - 1 + (j + 1) * N] +
           A[i + (j - 1) * N] + A[i + (j) * N] + A[i + (j + 1) * N] +
-          A[i + 1 + (j - 1) * N] + A[i + 1 + (j) * N] + A[i + 1 + (j + 1) * N]);
+          A[i + 1 + (j - 1) * N] + A[i + 1 + (j) * N] + A[i + 1 + (j + 1) * N]) * (1.0 / 9.0);
     }
   }
 }
