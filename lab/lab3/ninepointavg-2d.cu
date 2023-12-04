@@ -35,6 +35,49 @@
 float *A;
 float *Aavg;
 
+float *dA, *dAavg;
+
+__global__ void ninePointAverageKernel1D(const float *A, float *Aavg, int n) {
+  int idx = blockIdx.x;
+  int row = idx / n;
+  int col = idx % n;
+    
+  if (row > 0 && row < n - 1 && col > 0 && col < n - 1) {
+    Aavg[row * n + col] = (
+        A[(row - 1) * n + (col - 1)] + A[(row - 1) * n + col] + A[(row - 1) * n + (col + 1)] +
+        A[row * n + (col - 1)] + A[row * n + col] + A[row * n + (col + 1)] +
+        A[(row + 1) * n + (col - 1)] + A[(row + 1) * n + col] + A[(row + 1) * n + (col + 1)]
+    ) / 9.0f;
+  }
+}
+
+__global__ void ninePointAverageKernel2D(const float *A, float *Aavg, int n) {
+  int row = blockIdx.x;
+  int col = blockIdx.y;
+    
+  if (row > 0 && row < n - 1 && col > 0 && col < n - 1) {
+    Aavg[row * n + col] = (
+      A[(row - 1) * n + (col - 1)] + A[(row - 1) * n + col] + A[(row - 1) * n + (col + 1)] +
+      A[row * n + (col - 1)] + A[row * n + col] + A[row * n + (col + 1)] +
+      A[(row + 1) * n + (col - 1)] + A[(row + 1) * n + col] + A[(row + 1) * n + (col + 1)]
+    ) / 9.0f;
+  }
+}
+
+__global__ void ninePointAverageKernel2DThreads(const float *A, float *Aavg, int n) {
+  int row = blockIdx.x * blockDim.x + threadIdx.x;
+  int col = blockIdx.y * blockDim.y + threadIdx.y;
+    
+  if (row > 0 && row < n - 1 && col > 0 && col < n - 1) {
+    Aavg[row * n + col] = (
+      A[(row - 1) * n + (col - 1)] + A[(row - 1) * n + col] + A[(row - 1) * n + (col + 1)] +
+      A[row * n + (col - 1)] + A[row * n + col] + A[row * n + (col + 1)] +
+      A[(row + 1) * n + (col - 1)] + A[(row + 1) * n + col] + A[(row + 1) * n + (col + 1)]
+    ) / 9.0f;
+  }
+}
+
+
 // Reference CPU implementation
 // Code de reference pour le CPU
 void ninePointAverageCPU(const float *A, float *Aavg)
@@ -48,6 +91,23 @@ void ninePointAverageCPU(const float *A, float *Aavg)
   }
 }
 
+void verifyResults(const float *AavgGPU, const float *AavgCPU, int n) {
+  const float tolerance = 1e-5; // Tolerance for floating-point comparison
+
+  for (int i = 0; i < n; ++i) {
+    for (int j = 0; j < n; ++j) {
+      float diff = fabs(AavgGPU[i * n + j] - AavgCPU[i * n + j]);
+      if (diff > tolerance) {
+        std::cout << "Mismatch at [" << i << "][" << j << "]: GPU = " 
+                  << AavgGPU[i * n + j] << ", CPU = " << AavgCPU[i * n + j] << std::endl;
+        return;
+      }
+    }
+  }
+  std::cout << "Results verified: All elements match!" << std::endl;
+}
+
+
 
 int main()
 {
@@ -60,8 +120,52 @@ int main()
     }
   }
 
+  float* CPUresult;
+  ninePointAverageCPU(A, CPUresult);
+
+  cudaMalloc(&dA, N * N * sizeof(float));
+  cudaMalloc(&dAavg, N * N * sizeof(float));
+
+  cudaMemcpy(dA, A, N * N * sizeof(float), cudaMemcpyHostToDevice);
+
+  {
+    dim3 dimGrid1D(N * N);
+    ninePointAverageKernel1D<<<dimGrid1D, 1>>>(dA, dAavg, N);
+
+    cudaMemcpy(Aavg, dAavg, N * N * sizeof(float), cudaMemcpyDeviceToHost);
+    verifyResults(CPUresult, Aavg, N);
+    cudaMemset(dAavg, 0, N * N * sizeof(float));
+  }
+  {
+
+    cudaMemcpy(Aavg, dAavg, N * N * sizeof(float), cudaMemcpyDeviceToHost);
+    verifyResults(CPUresult, Aavg, N);
+    cudaMemset(dAavg, 0, N * N * sizeof(float));
+  }
+  {
+
+    cudaMemcpy(Aavg, dAavg, N * N * sizeof(float), cudaMemcpyDeviceToHost);
+    verifyResults(CPUresult, Aavg, N);
+    cudaMemset(dAavg, 0, N * N * sizeof(float));
+  }
+  {
+
+    cudaMemcpy(Aavg, dAavg, N * N * sizeof(float), cudaMemcpyDeviceToHost);
+    verifyResults(CPUresult, Aavg, N);
+    cudaMemset(dAavg, 0, N * N * sizeof(float));
+  }
+  {
+
+    cudaMemcpy(Aavg, dAavg, N * N * sizeof(float), cudaMemcpyDeviceToHost);
+    verifyResults(CPUresult, Aavg, N);
+    cudaMemset(dAavg, 0, N * N * sizeof(float));
+  }
+
   free(A);
   free(Am);
 
-  return 0;
+  cudaFree(dA);
+  cudaFree(dAavg);
 
+  return 0;
+}
