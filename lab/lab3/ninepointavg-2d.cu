@@ -190,24 +190,26 @@ int main()
   cudaMemcpy(dA, A, N * N * sizeof(float), cudaMemcpyHostToDevice);
 
   {
-    dim3 dimGrid1D(N, N, 1);
+    dim3 dimGrid1D(N * N, 1, 1);
     dim3 dimBlock1D(1, 1, 1);
     ninePointAverageKernel1D<<<dimGrid1D, dimBlock1D>>>(dA, dAavg, N);
     cudaMemcpy(Aavg, dAavg, N * N * sizeof(float), cudaMemcpyDeviceToHost);
 
     std::cout << "First kernel:" << std::endl;
     verifyResults(CPUresult, Aavg, N);
+    std::cout << "\n" << std::endl;
 
     cudaMemset(dAavg, 0, N * N * sizeof(float));
   }
   {
-    dim3 dimGrid2D(N, N, 1);
+    dim3 dimGrid2D(N , N, 1);
     dim3 dimBlock2D(1, 1, 1);
     ninePointAverageKernel2D<<<dimGrid2D, dimBlock2D>>>(dA, dAavg, N);
     cudaMemcpy(Aavg, dAavg, N * N * sizeof(float), cudaMemcpyDeviceToHost);
 
     std::cout << "Second kernel:" << std::endl;
     verifyResults(CPUresult, Aavg, N);
+    std::cout << "\n" << std::endl;
 
     cudaMemset(dAavg, 0, N * N * sizeof(float));
   }
@@ -219,6 +221,7 @@ int main()
 
     std::cout << "Third kernel:" << std::endl;
     verifyResults(CPUresult, Aavg, N);
+    std::cout << "\n" << std::endl;
 
     cudaMemset(dAavg, 0, N * N * sizeof(float));
   }
@@ -230,6 +233,7 @@ int main()
 
     std::cout << "Fourth kernel:" << std::endl;
     verifyResults(CPUresult, Aavg, N);
+    std::cout << "\n" << std::endl;
 
     cudaMemset(dAavg, 0, N * N * sizeof(float));
   }
@@ -241,6 +245,7 @@ int main()
 
     std::cout << "Fifth kernel:" << std::endl;
     verifyResults(CPUresult, Aavg, N);
+    std::cout << "\n" << std::endl;
 
     cudaMemset(dAavg, 0, N * N * sizeof(float));
   }
