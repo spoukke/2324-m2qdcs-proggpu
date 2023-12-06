@@ -219,58 +219,58 @@ int main(int argc, char **argv)
   // Appeler chaque kernel GPU de maniere appropriee pour multiplier les matrices A et B
   // Mesurer et afficher le temps d'execution et la performance (en GFlops/s) de chaque kernel, sans compter le temps de transfert.
   // TODO / A FAIRE ...
-  {
-    dim3 dimGrid;
-    dim3 dimBlock;
-    dimGrid.x = N;
-    dimGrid.y = N;
-    dimGrid.z = 1;
-    // multiplyMatrixGPUByBlocks<<<dimGrid, 1>>>(N);
-  }
-  {
-    dim3 dimGrid;
-    dim3 dimBlock;
-    dimBlock.x = 1024;
-    dimBlock.y = 1;
-    dimBlock.z = 1;
-    dimGrid.x = N;
-    dimGrid.y = (N + 1023) / 1024;
-    dimGrid.z = 1;
-    // multiplyMatrixGPUByBlocksThreads1D<<<dimGrid, dimBlock>>>(N);
-  }
-  { 
-    dim3 dimGrid;
-    dim3 dimBlock;
-    dimBlock.x = 1024;
-    dimBlock.y = 1;
-    dimBlock.z = 1;
-    dimGrid.x = N;
-    dimGrid.y = (N + 1023) / 1024;
-    dimGrid.z = 1;
-    // multiplyMatrixGPUByBlocksThreads1DNonMultiple<<<dimGrid, dimBlock>>>(N);
-  }
-  {
-    dim3 dimGrid;
-    dim3 dimBlock;
-    dimBlock.x = 32;
-    dimBlock.y = 32;
-    dimBlock.z = 1;
-    dimGrid.x = (N + 31) / 32;
-    dimGrid.y = (N + 31) / 32;
-    dimGrid.z = 1;
-    // multiplyMatrixGPUByBlocksThreads2D<<<dimGrid, dimBlock>>>(N);
-  }
-  {
-    dim3 dimGrid;
-    dim3 dimBlock;
-    dimBlock.x = 32;
-    dimBlock.y = 32;
-    dimBlock.z = 1;
-    dimGrid.x = (N + 31) / 32;
-    dimGrid.y = (N + 31) / 32;
-    dimGrid.z = 1;
-    // multiplyMatrixGPUByBlocksThreads2DNonMultiple<<<dimGrid, dimBlock>>>(N);
-  }
+  // {
+  //   dim3 dimGrid;
+  //   dim3 dimBlock;
+  //   dimGrid.x = N;
+  //   dimGrid.y = N;
+  //   dimGrid.z = 1;
+  //   // multiplyMatrixGPUByBlocks<<<dimGrid, 1>>>(N);
+  // }
+  // {
+  //   dim3 dimGrid;
+  //   dim3 dimBlock;
+  //   dimBlock.x = 1024;
+  //   dimBlock.y = 1;
+  //   dimBlock.z = 1;
+  //   dimGrid.x = N;
+  //   dimGrid.y = (N + 1023) / 1024;
+  //   dimGrid.z = 1;
+  //   // multiplyMatrixGPUByBlocksThreads1D<<<dimGrid, dimBlock>>>(N);
+  // }
+  // { 
+  //   dim3 dimGrid;
+  //   dim3 dimBlock;
+  //   dimBlock.x = 1024;
+  //   dimBlock.y = 1;
+  //   dimBlock.z = 1;
+  //   dimGrid.x = N;
+  //   dimGrid.y = (N + 1023) / 1024;
+  //   dimGrid.z = 1;
+  //   // multiplyMatrixGPUByBlocksThreads1DNonMultiple<<<dimGrid, dimBlock>>>(N);
+  // }
+  // {
+  //   dim3 dimGrid;
+  //   dim3 dimBlock;
+  //   dimBlock.x = 32;
+  //   dimBlock.y = 32;
+  //   dimBlock.z = 1;
+  //   dimGrid.x = (N + 31) / 32;
+  //   dimGrid.y = (N + 31) / 32;
+  //   dimGrid.z = 1;
+  //   // multiplyMatrixGPUByBlocksThreads2D<<<dimGrid, dimBlock>>>(N);
+  // }
+  // {
+  //   dim3 dimGrid;
+  //   dim3 dimBlock;
+  //   dimBlock.x = 32;
+  //   dimBlock.y = 32;
+  //   dimBlock.z = 1;
+  //   dimGrid.x = (N + 31) / 32;
+  //   dimGrid.y = (N + 31) / 32;
+  //   dimGrid.z = 1;
+  //   // multiplyMatrixGPUByBlocksThreads2DNonMultiple<<<dimGrid, dimBlock>>>(N);
+  // }
   {
     // Calling the multiplyMatrixGPUByBlocksThreads2DNonMultipleSharedMemory kernel
     dim3 dimBlock(BSXY, BSXY);
