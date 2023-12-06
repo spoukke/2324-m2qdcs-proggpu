@@ -77,6 +77,62 @@ __global__ void ninePointAverageKernel2DThreads(const float *A, float *Aavg, int
   }
 }
 
+__global__ void ninePointAverageKernelSharedMemory(const float *A, float *Aavg, int n) {
+  __shared__ float shA[BSXY + 2][BSXY + 2];
+  int tx = threadIdx.x, ty = threadIdx.y;
+  int row = blockIdx.x * (BSXY - 2) + tx;
+  int col = blockIdx.y * (BSXY - 2) + ty;
+
+  // Load data into shared memory
+  if (row < n && col < n) {
+    shA[tx][ty] = A[row * n + col];
+  }
+
+  __syncthreads();
+
+  // Compute the 9-point average for the inner (BSXY - 2) x (BSXY - 2) elements
+  if (tx > 0 && tx < BSXY - 1 && ty > 0 && ty < BSXY - 1 && row < n - 1 && col < n - 1) {
+    Aavg[(row - 1) * n + (col - 1)] = (
+      shA[tx - 1][ty - 1] + shA[tx - 1][ty] + shA[tx - 1][ty + 1] +
+      shA[tx][ty - 1] + shA[tx][ty] + shA[tx][ty + 1] +
+      shA[tx + 1][ty - 1] + shA[tx + 1][ty] + shA[tx + 1][ty + 1]
+    ) / 9.0f;
+  }
+}
+
+__global__ void ninePointAverageKernelKxK(const float *A, float *Aavg, int n) {
+  __shared__ float shA[BSXY + 2 * K][BSXY + 2 * K];
+  int tx = threadIdx.x, ty = threadIdx.y;
+  int row = blockIdx.x * BSXY * K + tx * K;
+  int col = blockIdx.y * BSXY * K + ty * K;
+
+  // Load KxK elements into shared memory per thread
+  for (int i = 0; i < K; ++i) {
+    for (int j = 0; j < K; ++j) {
+      if (row + i < n && col + j < n) {
+        shA[tx * K + i][ty * K + j] = A[(row + i) * n + col + j];
+      }
+    }
+  }
+
+  __syncthreads();
+
+  // Compute the 9-point average for KxK elements per thread
+  for (int i = 0; i < K; ++i) {
+    for (int j = 0; j < K; ++j) {
+      if (tx * K + i > 0 && tx * K + i < BSXY + K - 1 && ty * K + j > 0 && ty * K + j < BSXY + K - 1 && row + i < n - 1 && col + j < n - 1) {
+        Aavg[(row + i - 1) * n + col + j - 1] = (
+          shA[tx * K + i - 1][ty * K + j - 1] + shA[tx * K + i - 1][ty * K + j] + shA[tx * K + i - 1][ty * K + j + 1] +
+          shA[tx * K + i][ty * K + j - 1] + shA[tx * K + i][ty * K + j] + shA[tx * K + i][ty * K + j + 1] +
+          shA[tx * K + i + 1][ty * K + j - 1] + shA[tx * K + i + 1][ty * K + j] + shA[tx * K + i + 1][ty * K + j + 1]
+        ) / 9.0f;
+      }
+    }
+  }
+}
+
+
+
 
 // Reference CPU implementation
 // Code de reference pour le CPU
@@ -86,7 +142,11 @@ void ninePointAverageCPU(const float *A, float *Aavg)
     for (int j = 1; j < N - 1; j++) {
       Aavg[i + j * N] = (A[i - 1 + (j - 1) * N] + A[i - 1 + (j) * N] + A[i - 1 + (j + 1) * N] +
           A[i + (j - 1) * N] + A[i + (j) * N] + A[i + (j + 1) * N] +
+<<<<<<< HEAD
           A[i + 1 + (j - 1) * N] + A[i + 1 + (j) * N] + A[i + 1 + (j + 1) * N]) * (1.0 / 9.0);
+=======
+          A[i + 1 + (j - 1) * N] + A[i + 1 + (j) * N] + A[i + 1 + (j + 1) * N]) / 9.0f;
+>>>>>>> f6d9519 (feat: implement all kernels)
     }
   }
 }
@@ -121,6 +181,7 @@ int main()
   }
 
   float* CPUresult;
+  CPUresult = (float *) malloc(N * N * sizeof(float));
   ninePointAverageCPU(A, CPUresult);
 
   cudaMalloc(&dA, N * N * sizeof(float));
@@ -129,40 +190,64 @@ int main()
   cudaMemcpy(dA, A, N * N * sizeof(float), cudaMemcpyHostToDevice);
 
   {
-    dim3 dimGrid1D(N * N);
-    ninePointAverageKernel1D<<<dimGrid1D, 1>>>(dA, dAavg, N);
-
+    dim3 dimGrid1D(N, N, 1);
+    dim3 dimBlock1D(1, 1, 1);
+    ninePointAverageKernel1D<<<dimGrid1D, dimBlock1D>>>(dA, dAavg, N);
     cudaMemcpy(Aavg, dAavg, N * N * sizeof(float), cudaMemcpyDeviceToHost);
+
+    std::cout << "First kernel:" << std::endl;
     verifyResults(CPUresult, Aavg, N);
+
     cudaMemset(dAavg, 0, N * N * sizeof(float));
   }
   {
-
+    dim3 dimGrid2D(N, N, 1);
+    dim3 dimBlock2D(1, 1, 1);
+    ninePointAverageKernel2D<<<dimGrid2D, dimBlock2D>>>(dA, dAavg, N);
     cudaMemcpy(Aavg, dAavg, N * N * sizeof(float), cudaMemcpyDeviceToHost);
+
+    std::cout << "Second kernel:" << std::endl;
     verifyResults(CPUresult, Aavg, N);
+
     cudaMemset(dAavg, 0, N * N * sizeof(float));
   }
   {
-
+    dim3 dimGrid3D((N + BSXY - 1) / BSXY, (N + BSXY - 1) / BSXY, 1);
+    dim3 dimBlock3D(BSXY, BSXY, 1);
+    ninePointAverageKernel2DThreads<<<dimGrid3D, dimBlock3D>>>(dA, dAavg, N);
     cudaMemcpy(Aavg, dAavg, N * N * sizeof(float), cudaMemcpyDeviceToHost);
+
+    std::cout << "Third kernel:" << std::endl;
     verifyResults(CPUresult, Aavg, N);
+
     cudaMemset(dAavg, 0, N * N * sizeof(float));
   }
   {
-
+    dim3 dimGrid4((N + BSXY - 3) / (BSXY - 2), (N + BSXY - 3) / (BSXY - 2));
+    dim3 dimBlock4(BSXY + 2, BSXY + 2);
+    ninePointAverageKernelSharedMemory<<<dimGrid4, dimBlock4>>>(dA, dAavg, N);
     cudaMemcpy(Aavg, dAavg, N * N * sizeof(float), cudaMemcpyDeviceToHost);
+
+    std::cout << "Fourth kernel:" << std::endl;
     verifyResults(CPUresult, Aavg, N);
+
     cudaMemset(dAavg, 0, N * N * sizeof(float));
   }
   {
-
+    dim3 dimGrid5((N + BSXY * K - 3) / (BSXY * K), (N + BSXY * K - 3) / (BSXY * K));
+    dim3 dimBlock5(BSXY, BSXY);
+    ninePointAverageKernelKxK<<<dimGrid5, dimBlock5>>>(dA, dAavg, N);
     cudaMemcpy(Aavg, dAavg, N * N * sizeof(float), cudaMemcpyDeviceToHost);
+
+    std::cout << "Fifth kernel:" << std::endl;
     verifyResults(CPUresult, Aavg, N);
+
     cudaMemset(dAavg, 0, N * N * sizeof(float));
   }
 
   free(A);
-  free(Am);
+  free(Aavg);
+  free(CPUresult);
 
   cudaFree(dA);
   cudaFree(dAavg);
