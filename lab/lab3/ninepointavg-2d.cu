@@ -151,7 +151,8 @@ void ninePointAverageCPU(const float *A, float *Aavg)
   }
 }
 
-void verifyResults(const float *AavgGPU, const float *AavgCPU, int n) {
+void verifyResults(const float *AavgGPU, float *AavgCPU, int n) {
+  ninePointAverageCPU(A, AavgCPU);
   const float tolerance = 1e-5; // Tolerance for floating-point comparison
 
   for (int i = 0; i < n; ++i) {
@@ -214,9 +215,9 @@ int main()
     cudaMemset(dAavg, 0, N * N * sizeof(float));
   }
   {
-    dim3 dimGrid3D((N + BSXY - 1) / BSXY, (N + BSXY - 1) / BSXY, 1);
-    dim3 dimBlock3D(BSXY, BSXY, 1);
-    ninePointAverageKernel2DThreads<<<dimGrid3D, dimBlock3D>>>(dA, dAavg, N);
+    dim3 dimGrid3((N + BSXY - 1) / BSXY, (N + BSXY - 1) / BSXY, 1);
+    dim3 dimBlock3(BSXY, BSXY, 1);
+    ninePointAverageKernel2DThreads<<<dimGrid3, dimBlock3>>>(dA, dAavg, N);
     cudaMemcpy(Aavg, dAavg, N * N * sizeof(float), cudaMemcpyDeviceToHost);
 
     std::cout << "Third kernel:" << std::endl;
@@ -230,7 +231,6 @@ int main()
     dim3 dimBlock4(BSXY + 2, BSXY + 2);
     ninePointAverageKernelSharedMemory<<<dimGrid4, dimBlock4>>>(dA, dAavg, N);
     cudaMemcpy(Aavg, dAavg, N * N * sizeof(float), cudaMemcpyDeviceToHost);
-
     std::cout << "Fourth kernel:" << std::endl;
     verifyResults(CPUresult, Aavg, N);
     std::cout << "\n" << std::endl;
@@ -245,9 +245,6 @@ int main()
 
     std::cout << "Fifth kernel:" << std::endl;
     verifyResults(CPUresult, Aavg, N);
-    std::cout << "\n" << std::endl;
-
-    cudaMemset(dAavg, 0, N * N * sizeof(float));
   }
 
   free(A);
