@@ -24,6 +24,19 @@ __global__ void findMinimum(float *dA, float *dAmin, int N)
   __shared__ volatile float buff[BLOCKSIZE];
   int idx = threadIdx.x + blockIdx.x * BLOCKSIZE;
   // TODO / A FAIRE ...
+  buff[threadIdx.x] = (idx < N) ? dA[idx] : FLT_MAX;
+  __syncthreads();
+
+  for (int s = BLOCKSIZE / 2; s > 0; s >>= 1) {
+    if (threadIdx.x < s) {
+      buff[threadIdx.x] = fminf(buff[threadIdx.x], buff[threadIdx.x + s]);
+    }
+    __syncthreads();
+  }
+
+  if (threadIdx.x == 0) {
+    dAmin[blockIdx.x] = buff[0];
+  }
 }
 
 using namespace std;
@@ -32,7 +45,7 @@ int main()
 {
   srand(1234);
   int N = 100000000;
-  int numBlocks;// = ???; (TODO / A FAIRE ...)
+  int numBlocks = (N + BLOCKSIZE - 1) / BLOCKSIZE;// = ???; (TODO / A FAIRE ...)
   float *A, *dA; // Le tableau dont minimum on va chercher
   float *Amin, *dAmin; // Amin contiendra en suite le tableau reduit par un facteur de BLOCKSIZE apres l'execution du kernel GPU
 
@@ -41,6 +54,10 @@ int main()
   // Allour les tableaux A[N] et Amin[numBlocks] sur le CPU
   // Allouer les tableaux dA[N] et dAmin[numBlocks] sur le GPU
   // TODO / A FAIRE ...
+  A = new float[N];
+  Amin = new float[numBlocks];
+  cudaMalloc(&dA, N * sizeof(float));
+  cudaMalloc(&dAmin, numBlocks * sizeof(float));
 
   // Initialize the array A, set the minimum to -1
   // Initialiser le tableau A, mettre le minimum a -1.
@@ -50,6 +67,7 @@ int main()
   // Transfer A on the GPU (dA) with cudaMemcpy
   // Transferer A sur le GPU (dA) avec cudaMemcpy
   // TODO / A FAIRE ...
+  cudaMemcpy(dA, A, N * sizeof(float), cudaMemcpyHostToDevice);
 
   // Put maximum attainable value to minA.
   // Affecter la valeur maximum atteignable dans minA
@@ -60,11 +78,22 @@ int main()
   // TODO / A FAIRE ...
   // findMinimum<<<...>>>(...)
   // ...
+  findMinimum<<<numBlocks, BLOCKSIZE>>>(dA, dAmin, N);
+  cudaMemcpy(Amin, dAmin, numBlocks * sizeof(float), cudaMemcpyDeviceToHost);
+
+  for (int i = 0; i < numBlocks; i++) {
+    minA = fminf(minA, Amin[i]);
+  }
 
   // Verify the result
   // Verifier le resultat
   if (minA == -1) { cout << "The minimum is correct!" << endl; }
   else { cout << "The minimum found (" << minA << ") is incorrect (it should have been -1)!" << endl; }
+
+  delete[] A;
+  delete[] Amin;
+  cudaFree(dA);
+  cudaFree(dAmin);
 
   return 0;
 }
