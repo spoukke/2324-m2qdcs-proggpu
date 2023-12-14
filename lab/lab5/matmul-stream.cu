@@ -1,7 +1,9 @@
 #include <cstdio>
 #include <cuda.h>
 
-int N = 1024;
+#define THREADS_PER_BLOCK 256
+
+int N = 1023;
 const int nStreams = 4;
 float *A, *B, *C;
 float *dA, *dB, *dC;
@@ -9,9 +11,51 @@ cudaStream_t streams[nStreams];
 
 // Kernel that performs the matrix vector multiplication b(i) = sum_j(A(i, j), x(j))
 // A is row-major (stored row-by-row in memory)
-__device__ void matvec(float *A, float *x, float *b, int n)
+// TODO: should be __device__
+__global__ void matvec(float *A, float *x, float *b, int n)
 {
   // TODO / A FAIRE ...
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+
+  if (i < n) {
+    float sum = 0;
+    for (int j = 0; j < n; j++) {
+      sum += A[i * n + j] * x[j];
+    }
+    b[i] = sum;
+  }
+}
+
+void matvecCPU(float *A, float *x, float *b, int n) {
+  for (int i = 0; i < n; i++) {
+    b[i] = 0;
+    for (int j = 0; j < n; j++) {
+      b[i] += A[i * n + j] * x[j];
+    }
+  }
+}
+
+bool verifyResult(float *A, float *B, float *C, int n) {
+  bool isCorrect = true;
+  float *C_ref = (float *)malloc(n * sizeof(float));
+
+  for (int j = 0; j < n; j++) {
+    matvecCPU(A, &B[j * n], C_ref, n);
+
+    for (int i = 0; i < n; i++) {
+      if (fabs(C_ref[i] - C[i + j * n]) > 1e-5) {
+        isCorrect = false;
+        break;
+      }
+    }
+
+    if (!isCorrect) {
+      break;
+    }
+  }
+
+  free(C_ref);
+  return isCorrect;
 }
 
 int main()
@@ -44,14 +88,28 @@ int main()
   for (int j = 0; j < N; j++) {
     // Copy the column j of B into one of slots in dB using the stream no (j % nStreams) and cudaMemcpyAsync
     // TODO / A FAIRE ...
+    cudaMemcpyAsync(&dB[N * (j % nStreams)], &B[j * N], N * sizeof(float), cudaMemcpyHostToDevice, streams[j % nStreams]);
 
     // Perform the matrix-vector multiplication on A and the column vector in dB(:, j % nStreams), compute on dC(:, j % nStreams), using stream no (j % nStreams)
     // TODO / A FAIRE ...
+    matvec<<<(N + THREADS_PER_BLOCK - 1) / THREADS_PER_BLOCK, THREADS_PER_BLOCK, 0, streams[j % nStreams]>>>(dA, &dB[N * (j % nStreams)], &dC[N * (j % nStreams)], N);
 
     // Copy back the computed vector dC(:, j % nStreams) into the column C(:, j) using the same stream no (j % nStreams) and cudaMemcpyAsync
+    cudaMemcpyAsync(&C[j * N], &dC[N * (j % nStreams)], N * sizeof(float), cudaMemcpyDeviceToHost, streams[j % nStreams]);
   }
   
   cudaDeviceSynchronize();
+
+  if (verifyResult(A, B, C, N)) {
+    printf("GPU computation is correct! \n");
+  } else {
+    printf("GPU computation is incorrect! \n");
+  }
+
+  for (int i = 0; i < nStreams; i++) {
+    cudaStreamDestroy(streams[i]);
+  }
+
 
   free(A); free(B); free(C);
   cudaFree(dA); cudaFree(dB); cudaFree(dC);
