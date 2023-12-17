@@ -11,7 +11,6 @@ cudaStream_t streams[nStreams];
 
 // Kernel that performs the matrix vector multiplication b(i) = sum_j(A(i, j), x(j))
 // A is row-major (stored row-by-row in memory)
-// TODO: should be __device__
 __global__ void matvec(float *A, float *x, float *b, int n)
 {
   // TODO / A FAIRE ...
