@@ -199,7 +199,7 @@ int main(int argc, char **argv) {
       cudaMemcpy2DAsync(d_B_tiles[i][j], pitch, B_tile[i][j], pitch, pitch, tileSize, cudaMemcpyHostToDevice, transferStream);
     }
   }
-  cudaStreamSynchronize(transferStream);
+  // cudaStreamSynchronize(transferStream);
 
 
 
