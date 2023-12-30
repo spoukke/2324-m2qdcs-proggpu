@@ -57,7 +57,7 @@
 #include <cublas_v2.h>
 #include <cuda_runtime.h>
 
-#define N 512
+#define N 4096
 #define P 2
 
 static void simple_sgemm(int n, float alpha, const float *A, const float *B,
@@ -108,7 +108,7 @@ int main(int argc, char **argv) {
   for (int i = 0; i < N; i++) {
     for (int j = 0; j < N; j++) {
       A[i * N + j] = i + j; // A(i, j) = i + j
-      B[i + j * N] = 1.0f; // B(i, j) = 1
+      B[i + j * N] = i - j; // B(i, j) = 1
       C[i + j * N] = 0; // C(i, j) = 0
       C_ref[i + j * N] = 0; // C(i, j) = 0
     }
@@ -174,34 +174,22 @@ int main(int argc, char **argv) {
   float *d_A_tiles[P][P], *d_B_tiles[P][P], *d_C_tiles[P][P];
   int tileSize = N / P;
   int tileBytes = tileSize * tileSize * sizeof(float);
-
-  float A_tile[P][P][tileSize][tileSize], B_tile[P][P][tileSize][tileSize], C_tile[P][P][tileSize][tileSize];
-  for (int pi = 0; pi < P; pi++) {
-    for (int pj = 0; pj < P; pj++) {
-      for (int i = 0; i < tileSize; i++) {
-        for (int j = 0; j < tileSize; j++) {
-          A_tile[pi][pj][i][j] = A[(pi * tileSize + i) * N + pj * tileSize + j];
-          B_tile[pi][pj][i][j] = B[(pi * tileSize + i) * N + pj * tileSize + j];
-          C_tile[pi][pj][i][j] = 0; // Initialize C tile to zero
-        }
-      }
-    }
-  }
-
-  size_t pitch = tileSize * sizeof(float);
+  
+  size_t originalPitch = N * sizeof(float); // Pitch of the original full matrix
+  size_t width = tileSize * sizeof(float);  // Width of the tile in bytes
   for (int i = 0; i < P; i++) {
     for (int j = 0; j < P; j++) {
       cudaMalloc((void **)&d_A_tiles[i][j], tileBytes);
       cudaMalloc((void **)&d_B_tiles[i][j], tileBytes);
       cudaMalloc((void **)&d_C_tiles[i][j], tileBytes);
 
-      cudaMemcpy2DAsync(d_A_tiles[i][j], pitch, A_tile[i][j], pitch, pitch, tileSize, cudaMemcpyHostToDevice, transferStream);
-      cudaMemcpy2DAsync(d_B_tiles[i][j], pitch, B_tile[i][j], pitch, pitch, tileSize, cudaMemcpyHostToDevice, transferStream);
+      float* srcA = A + (i * tileSize * N) + (j * tileSize);
+      float* srcB = B + (i * tileSize * N) + (j * tileSize);
+
+      cudaMemcpy2DAsync(d_A_tiles[i][j], width, srcA, originalPitch, width, tileSize, cudaMemcpyHostToDevice, transferStream);
+      cudaMemcpy2DAsync(d_B_tiles[i][j], width, srcB, originalPitch, width, tileSize, cudaMemcpyHostToDevice, transferStream);
     }
   }
-  // cudaStreamSynchronize(transferStream);
-
-
 
   // Perform tiled matrix multiplication
   for (int pi = 0; pi < P; pi++) {
@@ -213,33 +201,24 @@ int main(int argc, char **argv) {
       beta = 0.0f;
       for (int k = 0; k < P; k++) {
         cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, tileSize, tileSize, tileSize, 
-                        &alpha, d_A_tiles[pi][k], tileSize, 
-                        d_B_tiles[k][pj], tileSize, &beta, 
+                        &alpha, d_A_tiles[k][pi], tileSize, 
+                        d_B_tiles[pj][k], tileSize, &beta, 
                         d_C_tiles[pi][pj], tileSize);
         beta = 1.0f;
       }
 
       // Copy each tile of d_C back to C asynchronously
-      cudaMemcpy2DAsync(C_tile[pj][pi], pitch, d_C_tiles[pi][pj], pitch, pitch, tileSize, cudaMemcpyDeviceToHost, computeStreams[pi][pj]);
+      float* dstC = C + (pj * tileSize * N) + (pi * tileSize);
+      cudaMemcpy2DAsync(dstC, originalPitch, d_C_tiles[pi][pj], width, width, tileSize, cudaMemcpyDeviceToHost, computeStreams[pi][pj]);
     }
   }
 
   for (int pi = 0; pi < P; pi++) {
     for (int pj = 0; pj < P; pj++) {
-      for (int i = 0; i < tileSize; i++) {
-        for (int j = 0; j < tileSize; j++) {
-          C[(pi * tileSize + i) * N + pj * tileSize + j] = C_tile[pi][pj][i][j];
-        }
-      }
+      cudaStreamSynchronize(computeStreams[pi][pj]);
     }
   }
 
-  // Synchronize all compute streams
-  // for (int pi = 0; pi < P; pi++) {
-  //   for (int pj = 0; pj < P; pj++) {
-  //     cudaStreamSynchronize(computeStreams[pi][pj]);
-  //   }
-  // }
 
   // Stop timing and synchronize
   cudaEventRecord(stop);
@@ -252,14 +231,14 @@ int main(int argc, char **argv) {
   printf("Performance task 2: %f GFlops/s\n", flopsPerSecond / 1e9);
 
   // uncomment for verification
-  // for (int i = 0; i < N; i++) {
-  //   for (int j = 0; j < N; j++) {
-  //     if (fabs(C[i * N + j] - C_ref[i * N + j]) > 1e-5) {
-  //       printf("Mismatch at row %d, column %d: GPU %f, CPU %f\n", i, j, C[i * N + j], C_ref[i * N + j]);
-  //       break;
-  //     }
-  //   }
-  // }
+//   for (int i = 0; i < N; i++) {
+//     for (int j = 0; j < N; j++) {
+//       if (fabs(C[i * N + j] / C_ref[i * N + j]) < 0.99) {
+//         printf("Mismatch at row %d, column %d: GPU %f, CPU %f\n", i, j, C[i * N + j], C_ref[i * N + j]);
+//         break;
+//       }
+//     }
+//   }
 
   // Clean-up: Destroy streams
   cudaStreamDestroy(transferStream);
